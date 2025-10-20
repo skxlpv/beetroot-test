@@ -1,5 +1,8 @@
+import re
 import scrapy
 from loguru import logger
+
+from test_project.utils.format_data import format_authors, format_affiliations, format_names_and_affiliations_dictionary
 
 class SpiderSpider(scrapy.Spider):
     name = "spider"
@@ -7,43 +10,53 @@ class SpiderSpider(scrapy.Spider):
     start_urls = ["https://virtual.tts.org/virtual/programme/eposters"]
     
     def parse(self, response):
-        posters_links_list = response.xpath('//div[4]/div/table/tbody/tr/td[2]/a[starts-with(@href, "/virtual/timeslot")]/@href').getall()
+        posters_links_list = response.css('td.uk-table-link a.uk-link-reset::attr(href)').getall()
         logger.info(f"Found {len(posters_links_list)} posters")
         
         for link in reversed(posters_links_list):
             yield response.follow(link, callback=self.parse_posters)
     
     def parse_posters(self, response):
-        presentation_links_list = response.xpath('//div[@class="uk-card uk-card-default uk-card-body uk-background-muted"]//a[starts-with(@href, "/virtual/lecture")]/@href').getall()
+        presentation_links_list = response.xpath('//div[4]/div/div[3]/div/div/div[1]/div/div/div/div/a//@href').getall()
         logger.info(f"Found {len(presentation_links_list)} presentations in poster: {response.url}")
         
         for link in reversed(presentation_links_list):
             yield response.follow(link, callback=self.parse_presentations)
     
     def parse_presentations(self, response):
-        logger.info(f"\n=== PARSING PRESENTATION ===")
-        logger.info(f"URL: {response.url}")
-
         session_name = response.xpath('//div[@class="uk-card uk-card-default uk-width-1-1"]/div[1]//a//text()').get()        
-        abstract_authors = response.xpath('//div[@class="uk-card-header"]/p[2]//text()[not(ancestor::sup)//text()]').getall()
-        poster_presenter = response.xpath('//div[@class="uk-card uk-card-default uk-width-1-1"]/div[3]//a//text()').get()
         presentation_title_data = response.xpath('//div[@class="uk-card uk-card-default uk-width-1-1"]/div[2]//h3//text()').get()
-
+        authors_data = response.xpath('//div[@class="uk-card-header"]/p[2]//text()').getall()
+        affiliations_data = response.xpath('//div[@class="uk-card-header"]/p[3]//text()').getall()
+        poster_presenter = response.xpath('//div[@class="uk-card uk-card-default uk-width-1-1"]/div[3]//a//text()').get().split(",",1)[0]
         presentation_title_split_list = presentation_title_data.split(" ", 1)
-        poster_presenter = poster_presenter.split(",", 1)[0]
         abstract_number, presentation_title = presentation_title_split_list[0], presentation_title_split_list[1]
-
-        logger.info(f"Session Name: {session_name}")
-        logger.info(f"Abstract Number: {presentation_title}")
-        logger.info(f"Presentation Title: {presentation_title}")
-        logger.info(f"Presenter: {poster_presenter}")
-        logger.info(f"Authors: {abstract_authors}\n")
+        abstract_text = response.xpath('//div[@class="uk-card-header"]/div/p//text() '
+        '| //div[@class="uk-card-header"]/h5[1]//text() '
+        '| //div[@class="uk-card-header"]//h5/following-sibling::p//text()').getall()
         
-        yield {
-            "Session Name": session_name,
-            "Presentation Number": abstract_number,
-            "Topic Title": presentation_title,
-            "Poster Presenter": poster_presenter,
-            "Abstract Authors": abstract_authors,
-            "Presentation Title": presentation_title,
-        }
+        names_dictionary = format_authors(authors_data)
+        affiliations_dictionary = format_affiliations(affiliations_data)
+
+        logger.info(f"AUTHORS DICTIONARY: {names_dictionary}")
+        logger.info(f"AFFILIATIONS DICTIONARY: {affiliations_data}")
+
+        poster_presenter = re.sub(r'\s+', ' ', poster_presenter.strip())
+        abstract_text = re.sub(r'\s+', ' ', "".join(abstract_text).strip())
+        
+        authors_dictionary = format_names_and_affiliations_dictionary(d1=names_dictionary, d2=affiliations_dictionary)
+        logger.info(f"RESULTING DICTIONARY: {authors_dictionary}")
+
+        for name, affiliation in authors_dictionary.items():
+            role = "Poster presenter" if name == poster_presenter else "Abstract author"
+            logger.info(f"YIELDING ITEM: {name}")
+            yield {
+                'Name (incl. titles if any mentioned)': name,
+                'Affiliation(s)': affiliation if not isinstance(affiliation, list) else ' ___ '.join(affiliation),
+                "Person's role": role,
+                'Session Name': session_name,
+                'Presentation Number': abstract_number,
+                'Topic Title': presentation_title,
+                'Presentation Abstract': abstract_text,
+                'Abstract URL': response.url
+            }
