@@ -8,6 +8,35 @@ class SpiderSpider(scrapy.Spider):
     name = "spider"
     allowed_domains = ["virtual.tts.org"]
     start_urls = ["https://virtual.tts.org/virtual/programme/eposters"]
+
+    def __init__(self, pipeline="default", *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pipeline_type = pipeline
+
+
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        pipeline_type = kwargs.get("pipeline", "default")
+
+        if pipeline_type == "filtered":
+            crawler.settings.set(
+                'ITEM_PIPELINES',
+                {'test_project.pipelines.FilteredAbstractAuthorPipeline': 300},
+                priority='spider'
+            )
+        else:
+            crawler.settings.set(
+                'ITEM_PIPELINES',
+                {'test_project.pipelines.PandasXlsxPipeline': 300},
+                priority='spider'
+            )
+
+        spider = super().from_crawler(crawler, *args, **kwargs)
+
+        spider.pipeline_type = pipeline_type
+
+        return spider
+
     
     def parse(self, response):
         posters_links_list = response.css('td.uk-table-link a.uk-link-reset::attr(href)').getall()
@@ -47,16 +76,36 @@ class SpiderSpider(scrapy.Spider):
         authors_dictionary = format_names_and_affiliations_dictionary(d1=names_dictionary, d2=affiliations_dictionary)
         logger.info(f"RESULTING DICTIONARY: {authors_dictionary}")
 
+
         for name, affiliation in authors_dictionary.items():
             role = "Poster presenter" if name == poster_presenter else "Abstract author"
             logger.info(f"YIELDING ITEM: {name}")
-            yield {
-                'Name (incl. titles if any mentioned)': name,
-                'Affiliation(s)': affiliation if not isinstance(affiliation, list) else ' ___ '.join(affiliation),
-                "Person's role": role,
-                'Session Name': session_name,
-                'Presentation Number': abstract_number,
-                'Topic Title': presentation_title,
-                'Presentation Abstract': abstract_text,
-                'Abstract URL': response.url
-            }
+
+            if self.pipeline_type == "filtered":
+                if role == "Abstract author":
+                    parts = name.split()
+                    first, middle, last = (parts + [None, None, None])[:3]
+
+                    yield {
+                        "First Name": first,
+                        "Middle Name": middle,
+                        "Last Name": last,
+                        "Affiliation(s)": affiliation,
+                        "Session Name": session_name,
+                        "Presentation Number": abstract_number,
+                        "Topic Title": presentation_title,
+                        "Presentation Abstract": abstract_text,
+                        "Abstract URL": response.url,
+                    }
+            else:
+                yield {
+                    'Name (incl. titles if any mentioned)': name,
+                    'Affiliation(s)': affiliation,
+                    "Person's role": role,
+                    'Session Name': session_name,
+                    'Presentation Number': abstract_number,
+                    'Topic Title': presentation_title,
+                    'Presentation Abstract': abstract_text,
+                    'Abstract URL': response.url,
+                }
+

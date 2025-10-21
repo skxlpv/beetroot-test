@@ -55,3 +55,31 @@ class PandasXlsxPipeline:
 
         except Exception as e:
             logger.error(f"Failed to write data: {e}")
+
+
+class FilteredAbstractAuthorPipeline:
+    def __init__(self):
+        self.items = []
+        self.filename = os.path.join(os.getcwd(), "Data Entry - Filtered Authors.xlsx")
+
+    def process_item(self, item, spider):
+        self.items.append(item)
+        return item
+
+    def close_spider(self, spider):
+        if not self.items:
+            logger.warning("No Abstract authors to save.")
+            return
+
+        df = pd.DataFrame(self.items)
+
+        if not os.path.exists(self.filename):
+            logger.info(f"Creating new file: {self.filename}")
+        else:
+            logger.info(f"Overwriting existing file: {self.filename}")
+
+        try:
+            df.to_excel(self.filename, index=False)
+            logger.info(f"Saved {len(df)} Abstract authors to {self.filename}")
+        except Exception as e:
+            logger.error(f"Failed to save filtered data: {e}")

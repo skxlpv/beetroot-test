@@ -47,7 +47,6 @@ def format_names_and_affiliations_dictionary(d1, d2):
                     result[name] = []
                 result[name].append(d2[k])
 
-    # merge multiple affiliations into one string per author
     for name in result:
         result[name] = "; ".join(result[name])
 
