@@ -13,7 +13,6 @@ class SpiderSpider(scrapy.Spider):
         super().__init__(*args, **kwargs)
         self.pipeline_type = pipeline
 
-
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
         pipeline_type = kwargs.get("pipeline", "default")
@@ -32,24 +31,21 @@ class SpiderSpider(scrapy.Spider):
             )
 
         spider = super().from_crawler(crawler, *args, **kwargs)
-
         spider.pipeline_type = pipeline_type
-
         return spider
-
     
     def parse(self, response):
         posters_links_list = response.css('td.uk-table-link a.uk-link-reset::attr(href)').getall()
         logger.info(f"Found {len(posters_links_list)} posters")
         
-        for link in reversed(posters_links_list):
+        for link in posters_links_list:
             yield response.follow(link, callback=self.parse_posters)
     
     def parse_posters(self, response):
         presentation_links_list = response.xpath('//div[4]/div/div[3]/div/div/div[1]/div/div/div/div/a//@href').getall()
         logger.info(f"Found {len(presentation_links_list)} presentations in poster: {response.url}")
         
-        for link in reversed(presentation_links_list):
+        for link in presentation_links_list:
             yield response.follow(link, callback=self.parse_presentations)
     
     def parse_presentations(self, response):
@@ -67,45 +63,21 @@ class SpiderSpider(scrapy.Spider):
         names_dictionary = format_authors(authors_data)
         affiliations_dictionary = format_affiliations(affiliations_data)
 
-        logger.info(f"AUTHORS DICTIONARY: {names_dictionary}")
-        logger.info(f"AFFILIATIONS DICTIONARY: {affiliations_data}")
-
         poster_presenter = re.sub(r'\s+', ' ', poster_presenter.strip())
         abstract_text = re.sub(r'\s+', ' ', "".join(abstract_text).strip())
         
         authors_dictionary = format_names_and_affiliations_dictionary(d1=names_dictionary, d2=affiliations_dictionary)
-        logger.info(f"RESULTING DICTIONARY: {authors_dictionary}")
-
 
         for name, affiliation in authors_dictionary.items():
             role = "Poster presenter" if name == poster_presenter else "Abstract author"
-            logger.info(f"YIELDING ITEM: {name}")
-
-            if self.pipeline_type == "filtered":
-                if role == "Abstract author":
-                    parts = name.split()
-                    first, middle, last = (parts + [None, None, None])[:3]
-
-                    yield {
-                        "First Name": first,
-                        "Middle Name": middle,
-                        "Last Name": last,
-                        "Affiliation(s)": affiliation,
-                        "Session Name": session_name,
-                        "Presentation Number": abstract_number,
-                        "Topic Title": presentation_title,
-                        "Presentation Abstract": abstract_text,
-                        "Abstract URL": response.url,
-                    }
-            else:
-                yield {
-                    'Name (incl. titles if any mentioned)': name,
-                    'Affiliation(s)': affiliation,
-                    "Person's role": role,
-                    'Session Name': session_name,
-                    'Presentation Number': abstract_number,
-                    'Topic Title': presentation_title,
-                    'Presentation Abstract': abstract_text,
-                    'Abstract URL': response.url,
-                }
-
+            
+            yield {
+                'Name': name,
+                'Affiliation': affiliation,
+                'Role': role,
+                'Session Name': session_name,
+                'Presentation Number': abstract_number,
+                'Topic Title': presentation_title,
+                'Presentation Abstract': abstract_text,
+                'Abstract URL': response.url,
+            }
