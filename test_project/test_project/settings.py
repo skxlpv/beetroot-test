@@ -59,8 +59,8 @@ DOWNLOAD_DELAY = 0
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-   'test_project.pipelines.PandasXlsxPipeline': 300,
-   'test_project.pipelines.FilteredAbstractAuthorPipeline': 300,
+   'test_project.pipelines.AppendPipeline': 300,
+   'test_project.pipelines.FilterAbstractAuthorPipeline': 300,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
